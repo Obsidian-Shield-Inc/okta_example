@@ -46,4 +46,5 @@ class UserInDB(User):
     pass
 
     class Config:
-        orm_mode = True # or from_attributes = True for Pydantic v2 
+        from_attributes = True # Pydantic V2
+        # orm_mode = True # or from_attributes = True for Pydantic v2 

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from . import crud, models, schemas
 from .database import get_db
-from .main import verify_token # verify_token is in main.py
+from .auth_utils import verify_token # verify_token is now in auth_utils.py
 
 async def get_or_create_current_app_user(
     db: Session = Depends(get_db),

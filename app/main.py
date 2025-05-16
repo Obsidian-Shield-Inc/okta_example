@@ -12,9 +12,22 @@ from .schemas import UserInDB
 import time
 from .database import create_tables, get_db
 from . import models
+from .auth_utils import verify_token
 
 # Load environment variables
 load_dotenv()
+
+# Initialize FastAPI app
+app = FastAPI()
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Call create_tables() to ensure DB and tables are created on startup
 # In a production app, you would use Alembic migrations instead.
@@ -27,17 +40,6 @@ def on_startup():
     # with next(get_db()) as db:
     #     crud.get_or_create_default_role(db, "ROLE_ADMIN", "Administrator Role")
     #     crud.get_or_create_default_role(db, "ROLE_EDITOR", "Editor Role")
-
-app = FastAPI()
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with your frontend URL
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Security
 security = HTTPBearer()
@@ -95,55 +97,6 @@ async def get_okta_jwks():
             # Log this server-side
             print(f"Generic error fetching Okta JWKS: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Error fetching Okta JWKS: {str(e)}")
-
-async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
-    token = credentials.credentials
-    if not OKTA_ISSUER or not OKTA_CLIENT_ID: # Check again inside dependency for safety
-        # Log this server-side
-        print("Server Error: Okta Issuer or Client ID not configured.")
-        raise HTTPException(status_code=500, detail="Okta configuration missing on server")
-    try:
-        jwks = await get_okta_jwks()
-        unverified_header = jwt.get_unverified_header(token)
-        rsa_key = {}
-        for key_spec in jwks.get("keys", []):
-            if key_spec.get("kid") == unverified_header.get("kid"):
-                rsa_key = {
-                    "kty": key_spec.get("kty"),
-                    "kid": key_spec.get("kid"),
-                    "use": key_spec.get("use"),
-                    "n": key_spec.get("n"),
-                    "e": key_spec.get("e")
-                }
-                break 
-        
-        if not rsa_key:
-            # Log this: print(f"Token KID: {unverified_header.get('kid')}, JWKS Kids: {[k.get('kid') for k in jwks.get('keys', [])]}")
-            raise HTTPException(status_code=401, detail="Unable to find appropriate signing key for token validation.")
-
-        payload = jwt.decode(
-            token,
-            rsa_key,
-            algorithms=["RS256"], 
-            audience=OKTA_CLIENT_ID,
-            issuer=OKTA_ISSUER
-        )
-        return payload # This is the dict of claims
-    except ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token has expired", headers={"WWW-Authenticate": "Bearer error=\"invalid_token\", error_description=\"The token has expired\""})
-    except JWTClaimsError as e: # E.g. audience or issuer mismatch
-        raise HTTPException(status_code=401, detail=f"Token claims invalid: {str(e)}", headers={"WWW-Authenticate": "Bearer error=\"invalid_token\""})
-    except JWTError as e: # Other JWT related errors from jose library
-        raise HTTPException(status_code=401, detail=f"Invalid token format or signature: {str(e)}", headers={"WWW-Authenticate": "Bearer error=\"invalid_token\""})
-    except HTTPException as e: # Re-raise HTTPExceptions from get_okta_jwks if they occur
-        raise e
-    except Exception as e: # Catch-all for truly unexpected errors during validation
-        # Log this critical error for server-side investigation: print(f"CRITICAL: Unexpected token validation error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials due to an unexpected error.",
-            headers={"WWW-Authenticate": "Bearer error=\"invalid_token\""},
-        )
 
 @app.get("/api/public")
 async def public_route():
