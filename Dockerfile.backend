@@ -5,9 +5,13 @@ WORKDIR /app
 # Add the parent directory of 'app' to PYTHONPATH
 ENV PYTHONPATH "${PYTHONPATH}:/"
 
+# Force Python to use stdout/stderr in unbuffered mode
+ENV PYTHONUNBUFFERED=1
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY ./app .
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"] 
+# Update command to enable access logging and ensure proper log handling
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-level", "info", "--access-log", "--use-colors"] 

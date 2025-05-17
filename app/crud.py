@@ -29,8 +29,9 @@ def get_user_by_email(db: Session, email: str) -> Optional[models.User]:
 def get_user_by_okta_id(db: Session, okta_id: str) -> Optional[models.User]:
     return db.query(models.User).filter(models.User.okta_user_id == okta_id).first()
 
-def get_users(db: Session, skip: int = 0, limit: int = 100) -> List[models.User]:
-    return db.query(models.User).offset(skip).limit(limit).all()
+def get_users(db: Session) -> List[models.User]:
+    """Get all users from the database."""
+    return db.query(models.User).all()
 
 def create_user(db: Session, user_data: schemas.UserCreate, okta_id: str, full_name: Optional[str] = None) -> models.User:
     db_user = models.User(
@@ -66,4 +67,23 @@ def create_user_with_basic_role(db: Session, okta_id: str, email: str, full_name
     
     # Assign the basic role to the new user
     db_user = assign_role_to_user(db, user=db_user, role=basic_role)
-    return db_user 
+    return db_user
+
+def get_or_create_admin_role(db: Session) -> models.Role:
+    """Get or create the admin role."""
+    admin_role = db.query(models.Role).filter(models.Role.name == "ROLE_ADMIN").first()
+    if not admin_role:
+        admin_role = models.Role(name="ROLE_ADMIN", description="Administrator Role")
+        db.add(admin_role)
+        db.commit()
+        db.refresh(admin_role)
+    return admin_role
+
+def make_user_admin(db: Session, user: models.User) -> models.User:
+    """Make a user an admin by assigning the admin role."""
+    admin_role = get_or_create_admin_role(db)
+    if admin_role not in user.roles:
+        user.roles.append(admin_role)
+        db.commit()
+        db.refresh(user)
+    return user 

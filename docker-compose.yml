@@ -33,6 +33,7 @@ services:
       - OKTA_CLIENT_ID=${OKTA_CLIENT_ID}
     volumes:
       - ./app:/app
+      - ./.env:/app/.env  # Mount the .env file directly into the container
     depends_on:
       db:
         condition: service_healthy
@@ -49,10 +50,10 @@ services:
       - NODE_ENV=development
       - REACT_APP_OKTA_ISSUER=${OKTA_ISSUER}
       - REACT_APP_OKTA_CLIENT_ID=${OKTA_CLIENT_ID}
-      - REACT_APP_API_URL=http://localhost:8000
     volumes:
       - ./client:/app
-      - /app/node_modules 
+      - /app/node_modules
+      - ./.env:/app/.env  # Mount the .env file directly into the container
     depends_on:
       - backend
     networks:

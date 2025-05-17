@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate, useNavigate, Link } from 'react-router-dom';
 import { Security, LoginCallback, useOktaAuth } from '@okta/okta-react';
 import { OktaAuth } from '@okta/okta-auth-js';
+import UsersList from './components/UsersList';
 
 // Check if required environment variables are present
 const issuer = process.env.REACT_APP_OKTA_ISSUER;
@@ -19,31 +20,63 @@ if (!issuer || !clientId) {
 // Log Okta configuration (without sensitive data)
 console.log('Okta Configuration (Frontend as Public Client with PKCE):', {
   issuer: issuer,
-  clientId: clientId ? '***' : undefined,
-  // hasClientSecret: !!clientSecret, // No longer relevant for this public client approach
+  clientId: clientId,
   pkceEnabled: true,
-  redirectUri: window.location.origin + '/login/callback'
+  redirectUri: window.location.origin + '/login/callback',
+  environment: process.env.NODE_ENV,
+  hasIssuer: !!process.env.REACT_APP_OKTA_ISSUER,
+  hasClientId: !!process.env.REACT_APP_OKTA_CLIENT_ID
 });
 
 const oktaAuth = new OktaAuth({
   issuer: issuer,
   clientId: clientId,
-  // clientSecret: clientSecret, // Temporarily removed
   redirectUri: window.location.origin + '/login/callback',
   scopes: ['openid', 'profile', 'email'],
-  pkce: true, // This is critical and MUST be true
+  pkce: true,
   tokenManager: {
     storage: 'localStorage',
     autoRenew: true,
     secure: process.env.NODE_ENV === 'production',
-    storageKey: 'okta-token-storage-pkce', // Changed key to avoid conflict
+    storageKey: 'okta-token-storage-pkce',
     autoRemove: true
   },
   cookies: {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'Lax'
   },
-  devMode: process.env.NODE_ENV !== 'production'
+  devMode: process.env.NODE_ENV !== 'production',
+  postLogoutRedirectUri: window.location.origin,
+  responseType: ['token', 'id_token'],
+  grantType: 'authorization_code',
+  authParams: {
+    pkce: true,
+    issuer: issuer,
+    display: 'page',
+    responseType: ['token', 'id_token'],
+    responseMode: 'fragment',
+    scopes: ['openid', 'profile', 'email'],
+    tokenManager: {
+      expireEarlySeconds: 120,
+      autoRenew: true
+    }
+  }
+});
+
+// Add token event listeners for debugging
+oktaAuth.tokenManager.on('added', (key, token) => {
+  console.log('Token added:', key);
+  console.log('Token claims:', token.claims);
+  // Log specific claims we need
+  if (token.claims) {
+    console.log('Email:', token.claims.email);
+    console.log('Sub:', token.claims.sub);
+    console.log('Scopes:', token.claims.scp || token.claims.scope);
+  }
+});
+
+oktaAuth.tokenManager.on('error', (error) => {
+  console.error('Token error:', error);
 });
 
 // Custom SecureRoute component for React Router v6
@@ -70,7 +103,14 @@ function Navigation() {
       console.log('Starting login process...');
       await oktaAuth.signInWithRedirect({
         originalUri: '/protected',
-        scopes: ['openid', 'profile', 'email']
+        responseType: ['id_token', 'token'],
+        scopes: ['openid', 'profile', 'email'],
+        authParams: {
+          responseMode: 'fragment',
+          display: 'page',
+          prompt: 'consent',
+          nonce: Math.random().toString(36)
+        }
       });
       console.log('Redirecting to Okta...');
     } catch (error) {
@@ -97,6 +137,8 @@ function Navigation() {
       <div style={styles.navLinks}>
         <Link to="/" style={styles.navLink}>Home</Link>
         <Link to="/protected" style={styles.navLink}>Protected Page</Link>
+        <Link to="/profile" style={styles.navLink}>Profile</Link>
+        <Link to="/users" style={styles.navLink}>Users</Link>
         {!authState?.isAuthenticated ? (
           <button onClick={login} style={styles.button}>Login</button>
         ) : (
@@ -146,16 +188,154 @@ function Home() {
 }
 
 function Protected() {
-  const { authState } = useOktaAuth();
+  const { authState, oktaAuth } = useOktaAuth();
+  const [backendData, setBackendData] = React.useState(null);
+  const [error, setError] = React.useState(null);
+  
+  React.useEffect(() => {
+    const fetchProtectedData = async () => {
+      if (authState?.isAuthenticated) {
+        try {
+          // Get the access token specifically
+          const accessToken = await oktaAuth.getAccessToken();
+          console.log('Calling backend with access token');
+          
+          const response = await fetch('http://localhost:8000/api/protected', {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Backend error: ${response.status}`);
+          }
+          
+          const data = await response.json();
+          setBackendData(data);
+          setError(null);
+        } catch (err) {
+          console.error('Error fetching protected data:', err);
+          setError(err.message);
+          setBackendData(null);
+        }
+      }
+    };
+
+    fetchProtectedData();
+  }, [authState, oktaAuth]);
+  
+  if (!authState) {
+    return <div>Loading...</div>;
+  }
   
   return (
     <div style={styles.container}>
       <h1 style={styles.title}>Protected Page</h1>
-      <p style={styles.text}>
-        {authState?.isAuthenticated 
-          ? "You have successfully accessed the protected page!"
-          : "You need to be logged in to see this content."}
-      </p>
+      {authState.isAuthenticated ? (
+        <div>
+          <p style={styles.text}>You have successfully accessed the protected page!</p>
+          {backendData && (
+            <div style={styles.successContainer}>
+              <h2>Backend Response:</h2>
+              <pre style={styles.pre}>{JSON.stringify(backendData, null, 2)}</pre>
+            </div>
+          )}
+          {error && (
+            <div style={styles.errorContainer}>
+              <h2>Error:</h2>
+              <p style={styles.errorText}>{error}</p>
+              <p>Please check:</p>
+              <ul>
+                <li>Backend server is running</li>
+                <li>CORS is properly configured</li>
+                <li>Token is being sent correctly</li>
+              </ul>
+            </div>
+          )}
+        </div>
+      ) : (
+        <p style={styles.text}>You need to be logged in to see this content.</p>
+      )}
+    </div>
+  );
+}
+
+function UserProfile() {
+  const { authState, oktaAuth } = useOktaAuth();
+  const [userData, setUserData] = React.useState(null);
+  const [error, setError] = React.useState(null);
+  
+  React.useEffect(() => {
+    const fetchUserData = async () => {
+      if (authState?.isAuthenticated) {
+        try {
+          // Get tokens
+          const accessToken = await oktaAuth.getAccessToken();
+          
+          // Get user info from Okta's UserInfo endpoint
+          const userInfo = await oktaAuth.token.getUserInfo();
+          console.log('Okta UserInfo:', userInfo);
+          
+          // Get ID token for additional claims
+          const idToken = await oktaAuth.getIdToken();
+          console.log('ID Token Claims:', await oktaAuth.token.decode(idToken));
+          
+          const response = await fetch('http://localhost:8000/api/users/me', {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'X-ID-Token': idToken,
+              'X-User-Info': JSON.stringify({
+                name: userInfo.name,
+                given_name: userInfo.given_name,
+                family_name: userInfo.family_name,
+                email: userInfo.email
+              })
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Backend error: ${response.status}`);
+          }
+          
+          const data = await response.json();
+          setUserData(data);
+          setError(null);
+        } catch (err) {
+          console.error('Error fetching user data:', err);
+          setError(err.message);
+          setUserData(null);
+        }
+      }
+    };
+
+    fetchUserData();
+  }, [authState, oktaAuth]);
+  
+  if (!authState) {
+    return <div>Loading...</div>;
+  }
+  
+  return (
+    <div style={styles.container}>
+      <h1 style={styles.title}>User Profile</h1>
+      {authState.isAuthenticated ? (
+        <div>
+          {userData && (
+            <div style={styles.successContainer}>
+              <h2>Your Profile:</h2>
+              <pre style={styles.pre}>{JSON.stringify(userData, null, 2)}</pre>
+            </div>
+          )}
+          {error && (
+            <div style={styles.errorContainer}>
+              <h2>Error:</h2>
+              <p style={styles.errorText}>{error}</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <p style={styles.text}>Please log in to view your profile.</p>
+      )}
     </div>
   );
 }
@@ -272,6 +452,12 @@ const styles = {
     overflow: 'auto',
     fontSize: '0.9rem',
   },
+  successContainer: {
+    marginTop: '2rem',
+    padding: '1rem',
+    backgroundColor: '#d4edda',
+    borderRadius: '4px',
+  },
 };
 
 function App() {
@@ -286,6 +472,22 @@ function App() {
             element={
               <SecureRoute>
                 <Protected />
+              </SecureRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <SecureRoute>
+                <UserProfile />
+              </SecureRoute>
+            }
+          />
+          <Route
+            path="/users"
+            element={
+              <SecureRoute>
+                <UsersList />
               </SecureRoute>
             }
           />
