@@ -201,13 +201,19 @@ function Protected() {
           console.log('Calling backend with access token');
           
           const response = await fetch('http://localhost:8000/api/protected', {
+            method: 'GET',
             headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
+              'Authorization': `Bearer ${accessToken}`,
+              'X-Requested-With': 'XMLHttpRequest',
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            mode: 'cors'
           });
           
           if (!response.ok) {
-            throw new Error(`Backend error: ${response.status}`);
+            throw new Error(`Backend error: ${response.status} - ${await response.text()}`);
           }
           
           const data = await response.json();
@@ -264,50 +270,46 @@ function UserProfile() {
   const { authState, oktaAuth } = useOktaAuth();
   const [userData, setUserData] = React.useState(null);
   const [error, setError] = React.useState(null);
+  const [isLoading, setIsLoading] = React.useState(false);
   
-  React.useEffect(() => {
-    const fetchUserData = async () => {
-      if (authState?.isAuthenticated) {
-        try {
-          // Get tokens
-          const accessToken = await oktaAuth.getAccessToken();
-          
-          // Get user info from Okta's UserInfo endpoint
-          const userInfo = await oktaAuth.token.getUserInfo();
-          console.log('Okta UserInfo:', userInfo);
-          
-          // Get ID token for additional claims
-          const idToken = await oktaAuth.getIdToken();
-          console.log('ID Token Claims:', await oktaAuth.token.decode(idToken));
-          
-          const response = await fetch('http://localhost:8000/api/users/me', {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'X-ID-Token': idToken,
-              'X-User-Info': JSON.stringify({
-                name: userInfo.name,
-                given_name: userInfo.given_name,
-                family_name: userInfo.family_name,
-                email: userInfo.email
-              })
-            }
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Backend error: ${response.status}`);
-          }
-          
-          const data = await response.json();
-          setUserData(data);
-          setError(null);
-        } catch (err) {
-          console.error('Error fetching user data:', err);
-          setError(err.message);
-          setUserData(null);
-        }
-      }
-    };
+  const fetchUserData = async () => {
+    if (authState?.isAuthenticated) {
+      try {
+        const accessToken = await oktaAuth.getAccessToken();
+        const userInfo = await oktaAuth.token.getUserInfo();
+        console.log('Okta UserInfo:', userInfo);
+        
+        const idToken = await oktaAuth.getIdToken();
+        
+        const response = await fetch('http://localhost:8000/api/users/me', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-ID-Token': idToken
+          },
+          credentials: 'include',
+          mode: 'cors'
+        });
 
+        if (!response.ok) {
+          throw new Error(`Backend error: ${response.status} - ${await response.text()}`);
+        }
+        
+        const data = await response.json();
+        setUserData(data);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching user data:', err);
+        setError(err.message);
+        setUserData(null);
+      }
+    }
+  };
+
+  React.useEffect(() => {
     fetchUserData();
   }, [authState, oktaAuth]);
   

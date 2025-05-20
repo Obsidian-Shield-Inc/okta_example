@@ -80,10 +80,18 @@ def get_or_create_admin_role(db: Session) -> models.Role:
     return admin_role
 
 def make_user_admin(db: Session, user: models.User) -> models.User:
-    """Make a user an admin by assigning the admin role."""
-    admin_role = get_or_create_admin_role(db)
-    if admin_role not in user.roles:
+    # Get or create the admin role
+    admin_role = db.query(models.Role).filter(models.Role.name == "ROLE_ADMIN").first()
+    if not admin_role:
+        admin_role = models.Role(name="ROLE_ADMIN", description="Administrator Role")
+        db.add(admin_role)
+        db.flush()  # Flush to get the role ID but don't commit yet
+    
+    # Check if user already has admin role
+    if not any(role.name == "ROLE_ADMIN" for role in user.roles):
+        # Merge the user into the current session to avoid attachment issues
+        user = db.merge(user)
         user.roles.append(admin_role)
         db.commit()
-        db.refresh(user)
+    
     return user 
