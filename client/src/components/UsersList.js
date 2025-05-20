@@ -1,5 +1,19 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useOktaAuth } from '@okta/okta-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Typography,
+  Box,
+  CircularProgress,
+  Alert,
+  useTheme,
+} from '@mui/material';
 import UserRoles from './UserRoles';
 
 const UsersList = () => {
@@ -7,8 +21,9 @@ const UsersList = () => {
   const [users, setUsers] = React.useState([]);
   const [error, setError] = React.useState(null);
   const [isLoading, setIsLoading] = React.useState(true);
+  const theme = useTheme();
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     if (!authState?.isAuthenticated) return;
 
     try {
@@ -39,112 +54,92 @@ const UsersList = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [authState?.isAuthenticated, oktaAuth]);
 
   React.useEffect(() => {
     fetchUsers();
-  }, [authState, oktaAuth]);
+  }, [fetchUsers]);
 
   if (!authState) {
-    return <div>Loading...</div>;
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+        <CircularProgress />
+      </Box>
+    );
   }
 
   if (!authState.isAuthenticated) {
-    return <div>Please log in to view the users list.</div>;
+    return (
+      <Box p={3}>
+        <Alert severity="info">Please log in to view the users list.</Alert>
+      </Box>
+    );
   }
 
   return (
-    <div style={styles.container}>
-      <h1 style={styles.title}>Users List</h1>
+    <Box sx={{ p: 3, maxWidth: '1200px', margin: '0 auto' }}>
+      <Typography variant="h4" component="h1" gutterBottom>
+        Users List
+      </Typography>
       
-      {isLoading && <div style={styles.loading}>Loading users...</div>}
+      {isLoading && (
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+          <CircularProgress />
+        </Box>
+      )}
       
       {error && (
-        <div style={styles.error}>
-          Error: {error}
-        </div>
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
       )}
       
       {!isLoading && !error && (
-        <div style={styles.tableContainer}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Email</th>
-                <th style={styles.th}>Full Name</th>
-                <th style={styles.th}>Roles</th>
-                <th style={styles.th}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        <TableContainer 
+          component={Paper} 
+          sx={{
+            backgroundColor: theme.palette.mode === 'dark' ? 'background.paper' : 'background.default',
+            borderRadius: 1,
+            overflow: 'hidden',
+          }}
+        >
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 'bold' }}>Email</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Full Name</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Roles</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {users.map(user => (
-                <tr key={user.id} style={styles.tr}>
-                  <td style={styles.td}>{user.email}</td>
-                  <td style={styles.td}>{user.full_name}</td>
-                  <td style={styles.td}>
-                    {user.roles.map(role => role.name).join(', ')}
-                  </td>
-                  <td style={styles.td}>
+                <TableRow 
+                  key={user.id}
+                  sx={{
+                    '&:last-child td, &:last-child th': { border: 0 },
+                    '&:hover': {
+                      backgroundColor: theme.palette.action.hover,
+                    },
+                  }}
+                >
+                  <TableCell>{user.email}</TableCell>
+                  <TableCell>{user.full_name}</TableCell>
+                  <TableCell>{user.roles.map(role => role.name).join(', ')}</TableCell>
+                  <TableCell>
                     <UserRoles 
                       user={user} 
                       onRolesUpdated={fetchUsers}
                     />
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
-    </div>
+    </Box>
   );
-};
-
-const styles = {
-  container: {
-    padding: '2rem',
-    maxWidth: '1200px',
-    margin: '0 auto',
-  },
-  title: {
-    fontSize: '2rem',
-    marginBottom: '2rem',
-    color: '#2c3e50',
-  },
-  tableContainer: {
-    overflowX: 'auto',
-  },
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse',
-    backgroundColor: 'white',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-    borderRadius: '4px',
-  },
-  th: {
-    backgroundColor: '#f8f9fa',
-    padding: '1rem',
-    textAlign: 'left',
-    borderBottom: '2px solid #dee2e6',
-  },
-  tr: {
-    borderBottom: '1px solid #dee2e6',
-  },
-  td: {
-    padding: '1rem',
-  },
-  loading: {
-    textAlign: 'center',
-    padding: '2rem',
-    color: '#666',
-  },
-  error: {
-    padding: '1rem',
-    backgroundColor: '#f8d7da',
-    color: '#721c24',
-    borderRadius: '4px',
-    marginBottom: '1rem',
-  },
 };
 
 export default UsersList; 

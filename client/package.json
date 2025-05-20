@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/icons-material": "^5.17.1",
+    "@mui/material": "^5.17.1",
     "@okta/okta-auth-js": "^6.9.0",
     "@okta/okta-react": "^6.9.0",
     "@testing-library/jest-dom": "^5.17.0",
@@ -38,4 +42,4 @@
       "last 1 safari version"
     ]
   }
-} 
+}
